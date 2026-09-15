@@ -28,6 +28,23 @@ export type Evento = {
   actualizadoEn?: Date
 }
 
+/**
+ * Ficha del usuario. Hasta ahora el usuario sólo existía dentro del token, que
+ * basta para autorizar pero no para enseñar "organizado por Ana" en el mapa ni
+ * para saber cuánta gente hay. `usuarioId` es la misma cadena que va en el
+ * token ("google:123..." o "dev:ana"), y es la que enlaza con creadoPor.
+ */
+export type UsuarioDoc = {
+  _id?: unknown
+  usuarioId: string
+  nombre: string
+  email?: string // nunca sale en respuestas públicas
+  foto?: string
+  proveedor: 'google' | 'dev'
+  creadoEn: Date
+  ultimaEntrada: Date
+}
+
 export type Suscripcion = {
   eventoId: string
   usuarioId: string
@@ -43,6 +60,7 @@ export type Denuncia = {
 
 export type Colecciones = {
   eventos: Collection<Evento>
+  usuarios: Collection<UsuarioDoc>
   suscripciones: Collection<Suscripcion>
   denuncias: Collection<Denuncia>
 }
@@ -73,6 +91,7 @@ export async function conectar(env: Env): Promise<ConexionDb> {
     db,
     col: {
       eventos: db.collection<Evento>('eventos'),
+      usuarios: db.collection<UsuarioDoc>('usuarios'),
       suscripciones: db.collection<Suscripcion>('suscripciones'),
       denuncias: db.collection<Denuncia>('denuncias'),
     },

@@ -41,6 +41,8 @@ pueda editar ni borrar el evento de otro. Si sale algo en rojo, no sigas.
 | POST | `/api/eventos/:id/denuncia` | con sesión |
 | GET | `/api/yo/suscripciones` | con sesión |
 | GET | `/api/yo/eventos` | con sesión |
+| GET | `/api/usuarios/yo` | con sesión — mi ficha con contadores |
+| GET | `/api/usuarios/:id` | público — perfil del organizador, sin email |
 | GET | `/api/sesion/google` | empieza el login |
 | GET | `/api/sesion/yo` | quién soy |
 | POST | `/api/sesion/salir` | cerrar sesión |
@@ -65,6 +67,60 @@ curl "http://localhost:8787/api/eventos?lng=-3.7038&lat=40.4168&r=3000"
 
 **`MODO_DEV` fuera de tu máquina es un agujero total**: cualquiera se hace pasar
 por cualquiera con una cabecera. No lo pongas nunca como secreto en producción.
+
+## Documentación ejecutable
+
+En `postman/` tienes la API entera documentada y lista para lanzar:
+
+| Fichero | Para qué |
+|---|---|
+| `fiestas.postman_collection.json` | 30 peticiones en 7 carpetas, con descripción cada una |
+| `fiestas.local.postman_environment.json` | apunta a `localhost:8787` |
+| `fiestas.produccion.postman_environment.json` | cambia `baseUrl` por tu dominio y ya |
+| `fiestas.http` | lo mismo sin Postman, para la extensión REST Client de VS Code |
+
+En Postman: *Import* → arrastra los tres `.json` → arriba a la derecha elige el
+entorno **Fiestas · local**.
+
+Tres cosas que hacen que no tengas que copiar ids a mano:
+
+- **`eventoId` se rellena sola.** Al crear un evento o consultar el mapa, un
+  script guarda el id en la variable, así que las peticiones siguientes ya
+  apuntan al evento correcto.
+- **Las fechas nunca caducan.** `enUnaHora` y `enSeisHoras` se calculan antes de
+  cada petición, así que los ejemplos siguen siendo válidos dentro de un año.
+- **La carpeta `6 · Permisos` está para fallar.** Espera 401, 403, 400 y 404. Si
+  alguna de esas peticiones sale bien, tenéis un agujero. Lánzala entera con el
+  Runner después de cada cambio en la autorización.
+
+Mira la cabecera `X-Db-Conexion-Ms` en cualquier respuesta que toque la base.
+
+## Usuarios
+
+No hay pantalla de registro: **entrar es registrarse**. La primera vez que
+alguien entra con Google se crea su ficha en la colección `usuarios`; las
+siguientes sólo se actualiza. El `usuarioId` es la misma cadena que va en el
+token (`google:123...` o `dev:ana`) y es la que enlaza con `creadoPor`.
+
+Para montar el frontend sin depender de Google, con `MODO_DEV="1"`:
+
+```bash
+# crea el usuario Y deja la cookie puesta: el navegador queda dentro
+curl -X POST http://localhost:8787/api/usuarios/dev \
+  -H "Content-Type: application/json" -d '{"nombre":"ana"}' -c cookies.txt
+
+curl http://localhost:8787/api/usuarios/dev/lista     # ver los que hay
+curl -X DELETE http://localhost:8787/api/usuarios/dev/ana   # borrarlo con todo lo suyo
+```
+
+Desde el navegador basta con `fetch('/api/usuarios/dev', {method:'POST',
+credentials:'include', body: JSON.stringify({nombre:'ana'})})` y ya estás
+dentro, con la misma cookie que pondría Google.
+
+**Estas rutas devuelven 404 con `MODO_DEV` apagado**, como si no existieran.
+
+El perfil público (`GET /api/usuarios/:id`) **nunca incluye el email**: es de
+otra persona. El tuyo (`/api/usuarios/yo`) sí, porque es tuyo.
 
 ## Activar el login con Google
 
@@ -155,10 +211,12 @@ src/
   esquemas.ts           validación con Zod (todo lo que entra pasa por aquí)
   lib/
     db.ts               conexión por invocación
+    usuarios.ts         alta al entrar (upsert) y perfiles
     auth.ts             sesión JWT en cookie + middlewares
     errores.ts          un solo formato de error para toda la API
     limites.ts          límite de peticiones y caché (opcionales, vía KV)
   rutas/
+    usuarios.ts         perfiles, y creación de usuarios de prueba
     eventos.ts          CRUD + denuncias
     suscripciones.ts    apuntarse, desapuntarse, mis fiestas
     sesion.ts           Google OAuth con PKCE, y login de desarrollo
@@ -167,6 +225,10 @@ scripts/
   seed.mjs              500 fiestas falsas para tener algo en el mapa
   probar.mjs            recorre la API y comprueba permisos
   bench-node.mjs        latencia a Atlas con y sin pool
+postman/
+  fiestas.postman_collection.json     la API documentada y ejecutable
+  fiestas.*.postman_environment.json  local y producción
+  fiestas.http                        lo mismo para VS Code REST Client
 ```
 
 ## Lo siguiente

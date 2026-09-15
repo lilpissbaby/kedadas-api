@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { crearSesion, cerrarSesion, esDev, usuarioDe, exigirSesion } from '../lib/auth'
 import { conDb } from '../lib/db'
+import { guardarAlEntrar } from '../lib/usuarios'
 import { ErrorApi, invalida } from '../lib/errores'
 import type { Contexto, Env, Usuario } from '../tipos'
 
@@ -163,6 +164,15 @@ sesion.get('/google/callback', async (c) => {
     foto: typeof carga.picture === 'string' ? carga.picture : undefined,
   }
 
+  // La ficha se crea/actualiza aquí: no hay pantalla de registro, entrar ES
+  // registrarse. Si Mongo falla no se bloquea el login — la sesión es válida
+  // igualmente y la ficha se creará en la siguiente entrada.
+  try {
+    await conDb(c.env, ({ col }) => guardarAlEntrar(col, usuario, 'google'))
+  } catch (err) {
+    console.error('No se pudo guardar la ficha del usuario:', err)
+  }
+
   await crearSesion(c, usuario)
   return c.redirect(destinoFinal(c.env), 302)
 })
@@ -191,7 +201,10 @@ sesion.post('/dev', async (c) => {
   const nombre = (cuerpo.nombre ?? 'mupsim').trim().slice(0, 40) || 'mupsim'
 
   const usuario: Usuario = { id: `dev:${nombre}`, nombre }
+
+  await conDb(c.env, ({ col }) => guardarAlEntrar(col, usuario, 'dev'))
   await crearSesion(c, usuario)
+
   return c.json({ usuario, aviso: 'Sesión de desarrollo. Esto no existe con MODO_DEV apagado.' })
 })
 
@@ -204,6 +217,7 @@ sesion.delete('/yo', exigirSesion, async (c) => {
     await col.suscripciones.deleteMany({ usuarioId: usuario.id })
     await col.eventos.deleteMany({ creadoPor: usuario.id })
     await col.denuncias.deleteMany({ usuarioId: usuario.id })
+    await col.usuarios.deleteOne({ usuarioId: usuario.id })
   })
 
   cerrarSesion(c)

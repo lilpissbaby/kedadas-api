@@ -32,6 +32,13 @@ try {
   await db.collection('eventos').createIndex({ creadoPor: 1, empiezaEn: -1 }, { name: 'por_creador' })
   console.log('eventos        -> geo (2dsphere), por_fin, por_creador')
 
+  // --- usuarios ---
+  // Único: un usuarioId es una persona. Es lo que hace que entrar dos veces
+  // actualice la ficha en lugar de crear una segunda.
+  await db.collection('usuarios').createIndex({ usuarioId: 1 }, { unique: true, name: 'un_id_por_persona' })
+  await db.collection('usuarios').createIndex({ proveedor: 1, creadoEn: -1 }, { name: 'por_proveedor' })
+  console.log('usuarios       -> un_id_por_persona (ÚNICO), por_proveedor')
+
   // --- suscripciones ---
   // Este índice ÚNICO no es una optimización: es la regla que impide
   // apuntarse dos veces a la misma fiesta. La API depende de que exista,

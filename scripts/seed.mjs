@@ -63,6 +63,24 @@ try {
   await col.insertMany(docs)
   console.log(`Insertadas ${docs.length} fiestas alrededor de [${LNG}, ${LAT}]`)
 
+  // Las fiestas falsas dicen quién las creó, así que esas personas tienen que
+  // existir: si no, la ficha del evento saldría sin organizador.
+  const colUsuarios = cliente.db(DB).collection('usuarios')
+  const creadores = [...new Set(docs.map((d) => d.creadoPor))]
+  await colUsuarios.bulkWrite(
+    creadores.map((usuarioId) => ({
+      updateOne: {
+        filter: { usuarioId },
+        update: {
+          $set: { nombre: usuarioId.replace('dev:', ''), proveedor: 'dev', ultimaEntrada: new Date() },
+          $setOnInsert: { usuarioId, creadoEn: new Date() },
+        },
+        upsert: true,
+      },
+    })),
+  )
+  console.log(`Creados ${creadores.length} usuarios de prueba (dev:usuario_0 … )`)
+
   // Los índices NO se crean aquí: son cosa de `npm run indices`, que además
   // les pone nombre. Si los creara también este script con otro nombre, Mongo
   // rechazaría el segundo ("Index already exists with a different name").

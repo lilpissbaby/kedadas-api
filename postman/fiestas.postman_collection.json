@@ -1,0 +1,1316 @@
+{
+  "info": {
+    "_postman_id": "c2dfd56b-12e6-4678-9c97-0940b7ebfa44",
+    "name": "API de fiestas",
+    "description": "# API de fiestas\n\nColección completa de la API: eventos geolocalizados, suscripciones, usuarios y moderación.\n\n## Antes de empezar\n\n1. Arranca la API: `npm run dev`\n2. Ten `MODO_DEV=\"1\"` en `.dev.vars` — casi toda la colección se identifica con la cabecera `X-Usuario-Dev`, que no existe sin eso.\n3. Comprueba la carpeta **0 · Está viva**.\n\n## Cómo identificarte\n\n| Forma | Cuándo |\n|---|---|\n| Cabecera `X-Usuario-Dev: ana` | Peticiones sueltas, y para probar con dos usuarios a la vez sin cerrar sesión |\n| Cookie (`POST /api/sesion/dev`) | Igual que hará el navegador. Postman la reenvía sola |\n| Google | `GET /api/sesion/google` desde el **navegador**, no desde Postman |\n\n## Variables\n\n`eventoId` se rellena sola al crear un evento o al consultar el mapa, así que las peticiones encadenan sin que copies ids a mano.\n\n`enUnaHora` y `enSeisHoras` se calculan en cada petición: las fechas de ejemplo nunca caducan.\n\n## Lo que conviene mirar\n\nLa cabecera **`X-Db-Conexion-Ms`** de cada respuesta que toca la base: son los milisegundos de abrir la conexión a Atlas. Por debajo de 300 todo bien; por encima de 800, toca caché o Durable Object.\n\nLa carpeta **6 · Permisos** está para fallar. Si alguna de esas peticiones sale bien, hay un agujero.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Fechas siempre futuras, para que los ejemplos no caduquen nunca.",
+          "const ahora = Date.now();",
+          "pm.collectionVariables.set('enUnaHora', new Date(ahora + 3600e3).toISOString());",
+          "pm.collectionVariables.set('enSeisHoras', new Date(ahora + 6 * 3600e3).toISOString());"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Aviso común: si la API no responde, casi siempre es que falta `npm run dev`.",
+          "if (pm.response.code === 0) console.log('¿Está corriendo `npm run dev`?');",
+          "if (pm.response.code === 404 && pm.request.url.toString().includes('/dev')) {",
+          "  console.log('404 en una ruta /dev: MODO_DEV está apagado. Es lo correcto en producción.');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8787",
+      "description": "Local. Para producción: https://api-fiestas.TU-SUBDOMINIO.workers.dev"
+    },
+    {
+      "key": "usuarioDev",
+      "value": "ana",
+      "description": "Usuario de desarrollo principal. Es el dueño de los eventos que creas."
+    },
+    {
+      "key": "otroUsuario",
+      "value": "bruno",
+      "description": "Segundo usuario: con él se comprueba que NO puede tocar lo de ana."
+    },
+    {
+      "key": "lng",
+      "value": "-3.7038",
+      "description": "Longitud. Puerta del Sol, Madrid."
+    },
+    {
+      "key": "lat",
+      "value": "40.4168",
+      "description": "Latitud."
+    },
+    {
+      "key": "eventoId",
+      "value": "",
+      "description": "Se rellena sola al crear un evento o consultar el mapa."
+    },
+    {
+      "key": "ultimoUsuario",
+      "value": "",
+      "description": "Se rellena sola al crear un usuario de prueba."
+    },
+    {
+      "key": "enUnaHora",
+      "value": "",
+      "description": "Calculada antes de cada petición."
+    },
+    {
+      "key": "enSeisHoras",
+      "value": "",
+      "description": "Calculada antes de cada petición."
+    }
+  ],
+  "item": [
+    {
+      "name": "0 · Está viva",
+      "description": "Empieza siempre por aquí. `/api/salud` te dice qué hay configurado en ese despliegue: si MODO_DEV está encendido, si el login de Google está puesto y si hay KV para caché y límites.",
+      "item": [
+        {
+          "name": "Índice de rutas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api"
+              ]
+            },
+            "description": "Lista de todos los endpoints. Si MODO_DEV está encendido, también los de desarrollo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Salud",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/salud",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "salud"
+              ]
+            },
+            "description": "Qué está configurado. Míralo antes de pelearte con nada."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test(\"MODO_DEV encendido (hace falta para el resto de la colección)\", () => pm.expect(d.modoDev).to.be.true);",
+                  "if (!d.loginGoogle) console.log(\"Aviso: login con Google sin configurar. Usa los endpoints de desarrollo.\");",
+                  "if (!d.cache) console.log(\"Aviso: sin KV. No hay límite de peticiones ni caché del mapa.\");"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 · Entrar",
+      "description": "Dos formas de identificarte.\n\n**Cabecera `X-Usuario-Dev`** (la que usa casi toda esta colección): vale para una petición suelta, no deja cookie. Cómodo para probar con varios usuarios a la vez.\n\n**Cookie de sesión**: `POST /api/sesion/dev` o `/api/usuarios/dev` dejan la cookie puesta, y Postman la reenvía sola en las siguientes peticiones. Es lo mismo que hará el navegador con el frontend.\n\n**Google**: `GET /api/sesion/google` es una redirección, así que no se prueba desde Postman — ábrela en el navegador.",
+      "item": [
+        {
+          "name": "Entrar como usuario de desarrollo (deja cookie)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sesion/dev",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sesion",
+                "dev"
+              ]
+            },
+            "description": "Crea la sesión con cookie httpOnly, igual que haría Google. A partir de aquí Postman va identificado sin poner ninguna cabecera.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"{{usuarioDev}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Quién soy",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sesion/yo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sesion",
+                "yo"
+              ]
+            },
+            "description": "Devuelve el usuario de la sesión, o `null` si no hay. No falla si no estás dentro."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Quién soy (con cabecera, sin cookie)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{usuarioDev}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sesion/yo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sesion",
+                "yo"
+              ]
+            },
+            "description": "La misma ruta identificándote con la cabecera en vez de con la cookie."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Salir",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sesion/salir",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sesion",
+                "salir"
+              ]
+            },
+            "description": "Borra la cookie de sesión."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Abrir login de Google (no usar desde Postman)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sesion/google",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sesion",
+                "google"
+              ]
+            },
+            "description": "Devuelve un 302 hacia Google. Ábrela en el navegador, no aquí. Si responde 501, es que faltan GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2 · Usuarios",
+      "description": "La ficha del usuario se crea al entrar, no hay pantalla de registro.\n\nLos endpoints con `/dev` **no existen** si MODO_DEV está apagado: devuelven 404. Son para poder montar el frontend sin depender de Google.",
+      "item": [
+        {
+          "name": "Crear usuario de prueba y entrar con él",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/dev",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "usuarios",
+                "dev"
+              ]
+            },
+            "description": "Crea la ficha en la colección `usuarios` y deja la sesión iniciada. Es el endpoint que quieres para desarrollar el frontend: llamas una vez y el navegador queda dentro.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"ana\",\n  \"foto\": \"https://i.pravatar.cc/150?u=ana\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json();",
+                  "pm.test(\"devuelve el usuario\", () => pm.expect(d.usuario.id).to.be.a(\"string\"));",
+                  "pm.collectionVariables.set(\"ultimoUsuario\", d.usuario.id.replace(\"dev:\", \"\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar usuarios de prueba",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/dev/lista",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "usuarios",
+                "dev",
+                "lista"
+              ]
+            },
+            "description": "Todos los usuarios con proveedor `dev`. Útil para saber con quién puedes entrar."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mi ficha (con contadores)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{usuarioDev}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/yo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "usuarios",
+                "yo"
+              ]
+            },
+            "description": "Perfil propio: incluye el email y cuántos eventos has creado y a cuántos estás apuntado."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Perfil público de un organizador",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/dev%3A{{usuarioDev}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "usuarios",
+                "dev%3A{{usuarioDev}}"
+              ]
+            },
+            "description": "Lo que el frontend enseña en 'organizado por ...'. **Nunca incluye el email**: es de otra persona."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Borrar usuario de prueba y todo lo suyo",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/dev/{{otroUsuario}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "usuarios",
+                "dev",
+                "{{otroUsuario}}"
+              ]
+            },
+            "description": "Limpieza: borra el usuario, sus eventos, sus suscripciones y sus denuncias. Para dejar la base como estaba."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 · Eventos",
+      "description": "El núcleo. `GET /api/eventos` es la consulta del mapa y es la ruta más llamada de la app: pública, cacheada y resuelta con el índice `2dsphere` en una sola query.\n\nMira la cabecera **`X-Db-Conexion-Ms`** en las respuestas: son los milisegundos que ha costado abrir la conexión a Atlas. Es la medición que decide si hace falta caché o cambiar de sitio.",
+      "item": [
+        {
+          "name": "Mapa · fiestas cerca de mí",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos?lng={{lng}}&lat={{lat}}&r=3000&limite=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos"
+              ],
+              "query": [
+                {
+                  "key": "lng",
+                  "value": "{{lng}}",
+                  "description": "Longitud. Negativa en España."
+                },
+                {
+                  "key": "lat",
+                  "value": "{{lat}}",
+                  "description": "Latitud."
+                },
+                {
+                  "key": "r",
+                  "value": "3000",
+                  "description": "Radio en metros. Máximo 50000."
+                },
+                {
+                  "key": "limite",
+                  "value": "50",
+                  "description": "Cuántas devolver como mucho (1-100)."
+                }
+              ]
+            },
+            "description": "Las burbujas. Devuelve lo que no ha terminado todavía, ordenado por cercanía.\n\n`r` es el radio en metros (100 a 50.000). `tipo` filtra por categoría.\n\n**Ojo con el orden: longitud primero, latitud después.** Es como lo guarda GeoJSON y es el error más común."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test(\"devuelve una lista\", () => pm.expect(d.eventos).to.be.an(\"array\"));",
+                  "console.log(\"conexión a Atlas:\", pm.response.headers.get(\"X-Db-Conexion-Ms\"), \"ms · caché:\", pm.response.headers.get(\"X-Cache\"));",
+                  "if (d.eventos.length) pm.collectionVariables.set(\"eventoId\", d.eventos[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mapa · filtrando por tipo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos?lng={{lng}}&lat={{lat}}&r=5000&tipo=discoteca",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos"
+              ],
+              "query": [
+                {
+                  "key": "lng",
+                  "value": "{{lng}}",
+                  "description": "Longitud"
+                },
+                {
+                  "key": "lat",
+                  "value": "{{lat}}",
+                  "description": "Latitud"
+                },
+                {
+                  "key": "r",
+                  "value": "5000",
+                  "description": "Radio en metros"
+                },
+                {
+                  "key": "tipo",
+                  "value": "discoteca",
+                  "description": "Una de las 7 categorías"
+                }
+              ]
+            },
+            "description": "Mismo endpoint filtrando. Tipos válidos: ayuntamiento, bar, discoteca, pub, casual, manifestacion, particular."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ficha de un evento",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos/{{eventoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos",
+                "{{eventoId}}"
+              ]
+            },
+            "description": "Trae además el organizador y, si hay sesión, si tú ya estás apuntado. Es la pantalla del detalle con la canción."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear evento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{usuarioDev}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos"
+              ]
+            },
+            "description": "Necesita sesión. `creadoPor` **no se envía**: sale del token. Aunque lo mandes en el cuerpo, se ignora.\n\n`cancionUrl` sólo admite Spotify, YouTube, Apple Music, SoundCloud y Bandcamp.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titulo\": \"Verbena del barrio\",\n  \"descripcion\": \"Con orquesta y bocadillo de calamares\",\n  \"tipo\": \"particular\",\n  \"lng\": -3.7038,\n  \"lat\": 40.4168,\n  \"empiezaEn\": \"{{enUnaHora}}\",\n  \"terminaEn\": \"{{enSeisHoras}}\",\n  \"cancionUrl\": \"https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json();",
+                  "pm.collectionVariables.set(\"eventoId\", d.evento.id);",
+                  "pm.test(\"el creador sale del token\", () => pm.expect(d.evento.esMio).to.be.true);",
+                  "console.log(\"evento creado:\", d.evento.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar evento",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{usuarioDev}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos/{{eventoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos",
+                "{{eventoId}}"
+              ]
+            },
+            "description": "Sólo el creador. Todos los campos son opcionales; manda sólo lo que cambia.\n\nPara quitar la canción, envía `\"cancionUrl\": null`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titulo\": \"Verbena del barrio (cambia de hora)\",\n  \"descripcion\": \"Empezamos antes\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Borrar evento",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{usuarioDev}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos/{{eventoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos",
+                "{{eventoId}}"
+              ]
+            },
+            "description": "Sólo el creador. Borra también las suscripciones de ese evento. Devuelve 204 sin cuerpo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 · Suscripciones",
+      "description": "Apuntarse a una fiesta. Apuntarse dos veces no duplica nada: lo impide un índice único en la base, no una comprobación en el código.",
+      "item": [
+        {
+          "name": "Apuntarme",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{otroUsuario}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos/{{eventoId}}/suscripcion",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos",
+                "{{eventoId}}",
+                "suscripcion"
+              ]
+            },
+            "description": "201 la primera vez, 200 si ya estabas. El contador `suscritos` del evento sube."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 o 200\", () => pm.expect([200,201]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mis fiestas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{otroUsuario}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/yo/suscripciones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "yo",
+                "suscripciones"
+              ]
+            },
+            "description": "A las que estoy apuntado, ordenadas por cuándo empiezan. Añade `?pasadas=1` para incluir las que ya terminaron."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Los eventos que he creado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{usuarioDev}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/yo/eventos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "yo",
+                "eventos"
+              ]
+            },
+            "description": "Los míos, con sus contadores de suscritos y denuncias, y si están ocultos."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Desapuntarme",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{otroUsuario}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos/{{eventoId}}/suscripcion",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos",
+                "{{eventoId}}",
+                "suscripcion"
+              ]
+            },
+            "description": "Baja el contador. Si no estabas apuntado no falla, simplemente no cambia nada."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 · Moderación",
+      "description": "Un mapa público con fiestas de particulares y manifestaciones necesita esto desde el primer día.\n\nA las 5 denuncias el evento se oculta solo hasta que lo reviséis a mano. El umbral es provisional.",
+      "item": [
+        {
+          "name": "Denunciar un evento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{otroUsuario}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos/{{eventoId}}/denuncia",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos",
+                "{{eventoId}}",
+                "denuncia"
+              ]
+            },
+            "description": "Motivos válidos: spam, contenido_ofensivo, no_existe, peligroso, otro.\n\nUna denuncia por persona y evento: la segunda da 409.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"spam\",\n  \"comentario\": \"Esta fiesta no existe, es publicidad\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 la primera, 409 si repites\", () => pm.expect([201,409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 · Permisos · esto TIENE que fallar",
+      "description": "Estas peticiones están para comprobar que la API dice que no. **Si alguna sale bien, tenéis un agujero.**\n\nEjecuta antes 'Crear evento' en la carpeta 3, para que `eventoId` sea de {{usuarioDev}}.",
+      "item": [
+        {
+          "name": "Crear sin sesión → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos"
+              ]
+            },
+            "description": "Sin identificarse no se crea nada.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titulo\": \"Fiesta sin dueño\",\n  \"tipo\": \"bar\",\n  \"lng\": -3.7038,\n  \"lat\": 40.4168,\n  \"empiezaEn\": \"{{enUnaHora}}\",\n  \"terminaEn\": \"{{enSeisHoras}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401: sin sesión no se crea\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Editar el evento de otro → 403",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{otroUsuario}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos/{{eventoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos",
+                "{{eventoId}}"
+              ]
+            },
+            "description": "El fallo número uno de OWASP en APIs. Ningún hosting lo cubre por ti: lo comprueba el código en cada mutación.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titulo\": \"Me apropio de tu fiesta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403: no es suyo\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Borrar el evento de otro → 403",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{otroUsuario}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos/{{eventoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos",
+                "{{eventoId}}"
+              ]
+            },
+            "description": "Igual que el anterior, pero borrando."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403: no es suyo\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Coordenadas imposibles → 400",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos?lng=999&lat=999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos"
+              ],
+              "query": [
+                {
+                  "key": "lng",
+                  "value": "999",
+                  "description": "Fuera de rango"
+                },
+                {
+                  "key": "lat",
+                  "value": "999",
+                  "description": "Fuera de rango"
+                }
+              ]
+            },
+            "description": "Validación en el borde: lo que no cuadra no llega a la base de datos."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"dice qué campo falla\", () => pm.expect(pm.response.json().error.detalles).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fiesta que termina antes de empezar → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{usuarioDev}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos"
+              ]
+            },
+            "description": "Regla de negocio, validada antes de tocar Mongo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titulo\": \"Imposible\",\n  \"tipo\": \"bar\",\n  \"lng\": -3.7038,\n  \"lat\": 40.4168,\n  \"empiezaEn\": \"{{enSeisHoras}}\",\n  \"terminaEn\": \"{{enUnaHora}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Canción de un sitio cualquiera → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Usuario-Dev",
+                "value": "{{usuarioDev}}",
+                "description": "Sólo funciona con MODO_DEV=1. Te identifica sin cookie ni Google."
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos"
+              ]
+            },
+            "description": "Sólo se admiten enlaces de plataformas conocidas, para no acabar sirviendo mp3 de cualquier parte.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titulo\": \"Canción rara\",\n  \"tipo\": \"bar\",\n  \"lng\": -3.7038,\n  \"lat\": 40.4168,\n  \"empiezaEn\": \"{{enUnaHora}}\",\n  \"terminaEn\": \"{{enSeisHoras}}\",\n  \"cancionUrl\": \"https://sitio-cualquiera.example/pista.mp3\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Id con formato raro → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/eventos/noesunid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eventos",
+                "noesunid"
+              ]
+            },
+            "description": "Un id que ni siquiera es un ObjectId debe dar 404 limpio, no un error interno feo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import { manejarError } from './lib/errores'
 import { eventos } from './rutas/eventos'
 import { suscripciones, mias } from './rutas/suscripciones'
 import { sesion } from './rutas/sesion'
+import { usuarios } from './rutas/usuarios'
 import type { Contexto } from './tipos'
 
 const app = new Hono<Contexto>()
@@ -47,6 +48,7 @@ app.use('/api/*', sesionOpcional)
 /* ---------------- rutas ---------------- */
 
 app.route('/api/sesion', sesion)
+app.route('/api/usuarios', usuarios)
 app.route('/api/eventos', eventos)
 app.route('/api/eventos', suscripciones) // /:id/suscripcion
 app.route('/api/yo', mias)
@@ -77,11 +79,22 @@ app.get('/api', (c) =>
       'POST   /api/eventos/:id/denuncia': 'denunciar (sesión)',
       'GET    /api/yo/suscripciones': 'mis fiestas (sesión)',
       'GET    /api/yo/eventos': 'los que he creado (sesión)',
+      'GET    /api/usuarios/yo': 'mi ficha con contadores (sesión)',
+      'GET    /api/usuarios/:id': 'perfil público de un organizador',
       'GET    /api/sesion/google': 'empezar login con Google',
       'GET    /api/sesion/yo': 'quién soy',
       'POST   /api/sesion/salir': 'cerrar sesión',
       'DELETE /api/sesion/yo': 'borrar mi cuenta y todo lo mío',
     },
+    soloDesarrollo: esDev(c.env)
+      ? {
+          'POST   /api/sesion/dev': 'entrar como {"nombre":"ana"} sin Google',
+          'POST   /api/usuarios/dev': 'crear usuario de prueba y entrar con él',
+          'GET    /api/usuarios/dev/lista': 'ver los usuarios de prueba',
+          'DELETE /api/usuarios/dev/:nombre': 'borrar un usuario de prueba y todo lo suyo',
+          'cabecera X-Usuario-Dev: ana': 'identificarse en una sola petición, sin cookie',
+        }
+      : 'MODO_DEV apagado: las rutas de desarrollo no existen',
   }),
 )
 

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { ObjectId } from 'mongodb'
 import { conDb, type Evento } from '../lib/db'
 import { exigirSesion, usuarioDe } from '../lib/auth'
+import { perfilPublico } from '../lib/usuarios'
 import { limitar, quienPide, claveMapa, deCache, aCache } from '../lib/limites'
 import { invalida, noEncontrado, sinPermiso, conflicto } from '../lib/errores'
 import { ConsultaCercanos, CrearEvento, EditarEvento, CrearDenuncia, detallesDeZod } from '../esquemas'
@@ -22,6 +23,7 @@ function aPublico(e: Evento & { _id: ObjectId }, usuarioId?: string) {
     terminaEn: e.terminaEn,
     cancionUrl: e.cancionUrl ?? null,
     suscritos: e.suscritos ?? 0,
+    creadoPor: e.creadoPor, // id del organizador: /api/usuarios/:id da su perfil
     esMio: usuarioId ? e.creadoPor === usuarioId : false,
   }
 }
@@ -77,11 +79,31 @@ eventos.get('/', async (c) => {
  * ------------------------------------------------------------------ */
 eventos.get('/:id', async (c) => {
   const id = idValido(c.req.param('id'))
+  const usuario = c.get('usuario')
 
-  const { valor } = await conDb(c.env, ({ col }) => col.eventos.findOne({ _id: id as never }))
-  if (!valor || valor.oculto) throw noEncontrado('Ese evento no existe')
+  const { valor } = await conDb(c.env, async ({ col }) => {
+    const evento = await col.eventos.findOne({ _id: id as never })
+    if (!evento || evento.oculto) return null
 
-  return c.json({ evento: aPublico(valor as never, c.get('usuario')?.id) })
+    // En la ficha sí se trae el organizador: es una consulta más, pero es la
+    // pantalla donde el usuario quiere ver quién monta la fiesta.
+    const creador = await col.usuarios.findOne({ usuarioId: evento.creadoPor })
+
+    // Y si hay sesión, si esa persona ya está apuntada.
+    const apuntado = usuario
+      ? Boolean(await col.suscripciones.findOne({ eventoId: id.toString(), usuarioId: usuario.id }))
+      : false
+
+    return { evento, creador, apuntado }
+  })
+
+  if (!valor) throw noEncontrado('Ese evento no existe')
+
+  return c.json({
+    evento: aPublico(valor.evento as never, usuario?.id),
+    organizador: valor.creador ? perfilPublico(valor.creador) : null,
+    estoyApuntado: valor.apuntado,
+  })
 })
 
 /* ------------------------------------------------------------------ *

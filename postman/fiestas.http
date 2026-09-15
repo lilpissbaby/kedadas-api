@@ -1,0 +1,192 @@
+###############################################################################
+#  API de fiestas · peticiones sueltas
+#
+#  Lo mismo que la colección de Postman, pero en texto, para quien no quiera
+#  abrir Postman. Funciona con la extensión "REST Client" de VS Code o con el
+#  cliente HTTP de IntelliJ: te sale un "Send Request" encima de cada bloque.
+#
+#  Antes: npm run dev, y MODO_DEV="1" en .dev.vars
+###############################################################################
+
+@base = http://localhost:8787
+@yo = ana
+@otro = bruno
+@lng = -3.7038
+@lat = 40.4168
+
+
+### ¿Está viva? Mira modoDev, loginGoogle y cache
+GET {{base}}/api/salud
+
+### Todas las rutas
+GET {{base}}/api
+
+
+###############################################################################
+#  Usuarios
+###############################################################################
+
+### Crear usuario de prueba y entrar con él (deja la cookie puesta)
+POST {{base}}/api/usuarios/dev
+Content-Type: application/json
+
+{
+  "nombre": "ana",
+  "foto": "https://i.pravatar.cc/150?u=ana"
+}
+
+### El segundo, para probar permisos
+POST {{base}}/api/usuarios/dev
+Content-Type: application/json
+
+{ "nombre": "bruno" }
+
+### Ver los usuarios de prueba que hay
+GET {{base}}/api/usuarios/dev/lista
+
+### Mi ficha, con contadores
+GET {{base}}/api/usuarios/yo
+X-Usuario-Dev: {{yo}}
+
+### Perfil público de un organizador (sin email)
+GET {{base}}/api/usuarios/dev:{{yo}}
+
+### Quién soy
+GET {{base}}/api/sesion/yo
+X-Usuario-Dev: {{yo}}
+
+
+###############################################################################
+#  Eventos
+###############################################################################
+
+### El mapa. Longitud primero, siempre
+GET {{base}}/api/eventos?lng={{lng}}&lat={{lat}}&r=3000
+
+### Filtrando por tipo
+GET {{base}}/api/eventos?lng={{lng}}&lat={{lat}}&r=5000&tipo=discoteca
+
+# @name crear
+### Crear un evento. Copia el id de la respuesta al @evento de abajo
+POST {{base}}/api/eventos
+Content-Type: application/json
+X-Usuario-Dev: {{yo}}
+
+{
+  "titulo": "Verbena del barrio",
+  "descripcion": "Con orquesta y bocadillo de calamares",
+  "tipo": "particular",
+  "lng": -3.7038,
+  "lat": 40.4168,
+  "empiezaEn": "2026-09-20T22:00:00Z",
+  "terminaEn": "2026-09-21T04:00:00Z",
+  "cancionUrl": "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT"
+}
+
+@evento = pega-aqui-el-id
+
+### Ficha: trae el organizador y si estás apuntado
+GET {{base}}/api/eventos/{{evento}}
+X-Usuario-Dev: {{yo}}
+
+### Editar (sólo el creador). Manda sólo lo que cambia
+PATCH {{base}}/api/eventos/{{evento}}
+Content-Type: application/json
+X-Usuario-Dev: {{yo}}
+
+{ "titulo": "Verbena del barrio (cambia de hora)" }
+
+### Quitar la canción: null, no cadena vacía
+PATCH {{base}}/api/eventos/{{evento}}
+Content-Type: application/json
+X-Usuario-Dev: {{yo}}
+
+{ "cancionUrl": null }
+
+
+###############################################################################
+#  Suscripciones
+###############################################################################
+
+### Bruno se apunta
+POST {{base}}/api/eventos/{{evento}}/suscripcion
+X-Usuario-Dev: {{otro}}
+
+### Las fiestas de bruno
+GET {{base}}/api/yo/suscripciones
+X-Usuario-Dev: {{otro}}
+
+### Los eventos que ha creado ana
+GET {{base}}/api/yo/eventos
+X-Usuario-Dev: {{yo}}
+
+### Bruno se borra
+DELETE {{base}}/api/eventos/{{evento}}/suscripcion
+X-Usuario-Dev: {{otro}}
+
+
+###############################################################################
+#  Moderación
+###############################################################################
+
+### Denunciar. Motivos: spam, contenido_ofensivo, no_existe, peligroso, otro
+POST {{base}}/api/eventos/{{evento}}/denuncia
+Content-Type: application/json
+X-Usuario-Dev: {{otro}}
+
+{ "motivo": "spam", "comentario": "Es publicidad" }
+
+
+###############################################################################
+#  Estas TIENEN que fallar. Si alguna sale bien, hay un agujero.
+###############################################################################
+
+### 401 · crear sin sesión
+POST {{base}}/api/eventos
+Content-Type: application/json
+
+{
+  "titulo": "Fiesta sin dueño", "tipo": "bar",
+  "lng": -3.7038, "lat": 40.4168,
+  "empiezaEn": "2026-09-20T22:00:00Z", "terminaEn": "2026-09-21T04:00:00Z"
+}
+
+### 403 · bruno intenta editar el evento de ana
+PATCH {{base}}/api/eventos/{{evento}}
+Content-Type: application/json
+X-Usuario-Dev: {{otro}}
+
+{ "titulo": "Me apropio de tu fiesta" }
+
+### 403 · bruno intenta borrarlo
+DELETE {{base}}/api/eventos/{{evento}}
+X-Usuario-Dev: {{otro}}
+
+### 400 · coordenadas imposibles
+GET {{base}}/api/eventos?lng=999&lat=999
+
+### 400 · termina antes de empezar
+POST {{base}}/api/eventos
+Content-Type: application/json
+X-Usuario-Dev: {{yo}}
+
+{
+  "titulo": "Imposible", "tipo": "bar",
+  "lng": -3.7038, "lat": 40.4168,
+  "empiezaEn": "2026-09-21T04:00:00Z", "terminaEn": "2026-09-20T22:00:00Z"
+}
+
+### 404 · id con formato raro
+GET {{base}}/api/eventos/noesunid
+
+
+###############################################################################
+#  Limpieza
+###############################################################################
+
+### Borrar el evento (sólo el dueño)
+DELETE {{base}}/api/eventos/{{evento}}
+X-Usuario-Dev: {{yo}}
+
+### Borrar un usuario de prueba y todo lo suyo
+DELETE {{base}}/api/usuarios/dev/{{otro}}

@@ -194,6 +194,36 @@ comprobar('/api/sesion/yo identifica al usuario', yo.datos?.usuario?.id === 'dev
 const anonimo = await pedir('GET', '/api/sesion/yo')
 comprobar('sin sesión devuelve usuario null', anonimo.datos?.usuario === null)
 
+/* ---------- 7b. usuarios ---------- */
+console.log('\nusuarios')
+const creado1 = await pedir('POST', '/api/usuarios/dev', { cuerpo: { nombre: 'ana' } })
+comprobar('se crea un usuario de prueba', creado1.estado === 201, `estado ${creado1.estado}`)
+comprobar('devuelve el id con prefijo dev:', creado1.datos?.usuario?.id === 'dev:ana')
+comprobar('deja la sesión iniciada', creado1.datos?.sesionIniciada === true)
+
+const repetido = await pedir('POST', '/api/usuarios/dev', { cuerpo: { nombre: 'ana' } })
+comprobar('crear el mismo dos veces no duplica', repetido.estado === 201)
+
+const nombreMalo = await pedir('POST', '/api/usuarios/dev', { cuerpo: { nombre: 'a' } })
+comprobar('rechaza nombres de un carácter', nombreMalo.estado === 400)
+
+const lista = await pedir('GET', '/api/usuarios/dev/lista')
+comprobar('los lista', Array.isArray(lista.datos?.usuarios) && lista.datos.usuarios.length > 0)
+
+const publico = await pedir('GET', '/api/usuarios/dev:ana')
+comprobar('el perfil público existe', publico.estado === 200, `estado ${publico.estado}`)
+comprobar('el perfil público NO lleva email', publico.datos?.usuario?.email === undefined)
+
+const ficha = await pedir('GET', '/api/usuarios/yo', { usuario: 'ana' })
+comprobar('mi ficha trae contadores', typeof ficha.datos?.eventosCreados === 'number')
+
+const noExiste = await pedir('GET', '/api/usuarios/dev:nadie_con_este_nombre')
+comprobar('un usuario inexistente da 404', noExiste.estado === 404)
+
+const conOrganizador = await pedir('GET', `/api/eventos/${idEvento}`, { usuario: 'bruno' })
+comprobar('la ficha del evento trae el organizador', conOrganizador.datos?.organizador?.id === 'dev:ana')
+comprobar('y dice si estoy apuntado', typeof conOrganizador.datos?.estoyApuntado === 'boolean')
+
 /* ---------- 8. limpieza ---------- */
 console.log('\nlimpieza')
 const borrado = await pedir('DELETE', `/api/eventos/${idEvento}`, { usuario: 'ana' })
@@ -204,6 +234,13 @@ comprobar('ya no existe', yaNo.estado === 404, `estado ${yaNo.estado}`)
 
 const inventado = await pedir('GET', '/api/eventos/noesunid')
 comprobar('un id con formato raro da 404, no un error feo', inventado.estado === 404)
+
+// Los usuarios de prueba que ha creado este script se van con lo suyo detrás,
+// para no dejar basura en la base entre ejecuciones.
+for (const nombre of ['ana', 'bruno']) {
+  const limpiado = await pedir('DELETE', `/api/usuarios/dev/${nombre}`)
+  comprobar(`se limpia el usuario de prueba ${nombre}`, limpiado.estado === 200)
+}
 
 /* ---------- resultado ---------- */
 console.log(`\n${'-'.repeat(50)}`)
