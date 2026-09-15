@@ -1,0 +1,29 @@
+# Copia este fichero a .dev.vars y rellénalo. .dev.vars NUNCA se sube al repo.
+# En producción NO se usa este fichero: cada valor va con
+#   npx wrangler secret put NOMBRE
+
+# --- obligatorios ---
+
+# Atlas > Connect > Drivers > Node.js. Sustituye <db_password>.
+MONGODB_URI="mongodb+srv://usuario:password@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority"
+
+# Con el que se firman las sesiones. Mínimo 32 caracteres.
+# Genera uno:  npm run secreto
+JWT_SECRET="cambia-esto-por-algo-largo-y-aleatorio-de-verdad-min-32"
+
+# --- opcionales ---
+
+DB_NAME="fiestas"
+
+# Deja MODO_DEV en 1 mientras desarrollas: permite entrar sin Google.
+# QUÍTALO antes de desplegar. Con esto encendido cualquiera puede hacerse
+# pasar por cualquier usuario con una cabecera.
+MODO_DEV="1"
+
+# Dominio del frontend. En producción es obligatorio: es lo que cierra el CORS.
+# ORIGEN_WEB="https://fiestas.tudominio.com"
+
+# Login con Google. Sin estos dos, la API arranca igual y /api/sesion/google
+# responde 501 explicando que falta configurarlo.
+# GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
+# GOOGLE_CLIENT_SECRET="...."

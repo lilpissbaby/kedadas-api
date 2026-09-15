@@ -1,0 +1,30 @@
+{
+  "name": "api-fiestas",
+  "main": "src/index.ts",
+
+  // Estas dos líneas son las que permiten que el driver de MongoDB funcione.
+  // compatibility_date >= 2024-12-05 incluye node:net; TLS llegó en marzo 2025.
+  // No las bajes.
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "observability": { "enabled": true },
+
+  // Variables NO secretas. Las secretas (MONGODB_URI, JWT_SECRET,
+  // GOOGLE_CLIENT_SECRET) van en .dev.vars en local y con
+  // `npx wrangler secret put NOMBRE` en producción. Nunca aquí.
+  "vars": {
+    "DB_NAME": "fiestas"
+    // "ORIGEN_WEB": "https://fiestas.tudominio.com"
+  }
+
+  // Opcional. Da límite de peticiones por usuario y caché del mapa.
+  // Sin esto la API funciona igual, sólo que sin ninguna de las dos cosas.
+  // Para activarlo:
+  //   npx wrangler kv namespace create CACHE
+  // y pega aquí el id que te devuelva:
+  //
+  // "kv_namespaces": [
+  //   { "binding": "CACHE", "id": "pega_aqui_el_id" }
+  // ]
+}
