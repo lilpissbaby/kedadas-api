@@ -4,6 +4,7 @@ import { conDb } from '../lib/db'
 import { exigirSesion, usuarioDe } from '../lib/auth'
 import { limitar, quienPide } from '../lib/limites'
 import { noEncontrado, conflicto } from '../lib/errores'
+import { urlsImagen } from '../lib/imagenes'
 import type { Contexto } from '../tipos'
 
 /**
@@ -120,6 +121,7 @@ mias.get('/suscripciones', exigirSesion, async (c) => {
       empiezaEn: e.empiezaEn,
       terminaEn: e.terminaEn,
       cancionUrl: e.cancionUrl ?? null,
+      imagen: urlsImagen(e.imagen),
       suscritos: e.suscritos ?? 0,
       esMio: e.creadoPor === usuario.id,
     })),
@@ -141,6 +143,7 @@ mias.get('/eventos', exigirSesion, async (c) => {
       tipo: e.tipo,
       empiezaEn: e.empiezaEn,
       terminaEn: e.terminaEn,
+      imagen: urlsImagen(e.imagen),
       suscritos: e.suscritos ?? 0,
       denuncias: e.denuncias ?? 0,
       oculto: e.oculto ?? false,

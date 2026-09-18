@@ -1,4 +1,4 @@
-import type { KVNamespace } from '@cloudflare/workers-types'
+import type { KVNamespace, R2Bucket } from '@cloudflare/workers-types'
 
 /** Todo lo que el Worker recibe de fuera. Nada de esto se escribe en el código. */
 export type Env = {
@@ -23,6 +23,14 @@ export type Env = {
   // Opcional: si existe, se usa para límites de peticiones y caché del mapa.
   // Sin él la API funciona igual, sólo que sin límite ni caché.
   CACHE?: KVNamespace
+
+  // Opcional: bucket R2 para las imágenes de los eventos. Sin él, subir
+  // imágenes responde 501 y los eventos funcionan con su emoji de siempre.
+  IMAGENES?: R2Bucket
+
+  // Lo pone node/servidor.ts al correr en Docker: reutiliza la conexión a Mongo
+  // entre peticiones. En el Worker no existe. No lo pongas a mano.
+  MONGO_POOL?: string
 }
 
 export type Usuario = {

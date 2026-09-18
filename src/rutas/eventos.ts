@@ -5,6 +5,7 @@ import { exigirSesion, usuarioDe } from '../lib/auth'
 import { perfilPublico } from '../lib/usuarios'
 import { limitar, quienPide, claveMapa, deCache, aCache } from '../lib/limites'
 import { invalida, noEncontrado, sinPermiso, conflicto } from '../lib/errores'
+import { urlsImagen, comprobarImagenPropia, borrarImagenes } from '../lib/imagenes'
 import { ConsultaCercanos, CrearEvento, EditarEvento, CrearDenuncia, detallesDeZod } from '../esquemas'
 import type { Contexto } from '../tipos'
 
@@ -22,6 +23,7 @@ function aPublico(e: Evento & { _id: ObjectId }, usuarioId?: string) {
     empiezaEn: e.empiezaEn,
     terminaEn: e.terminaEn,
     cancionUrl: e.cancionUrl ?? null,
+    imagen: urlsImagen(e.imagen),
     suscritos: e.suscritos ?? 0,
     creadoPor: e.creadoPor, // id del organizador: /api/usuarios/:id da su perfil
     esMio: usuarioId ? e.creadoPor === usuarioId : false,
@@ -121,6 +123,7 @@ eventos.post('/', exigirSesion, async (c) => {
   // gastarte la cuota del día. Lo que frena el abuso de verdad son las reglas
   // de Rate Limiting del panel, que actúan antes de llegar hasta aquí.
   await limitar(c, { clave: `crear:${quienPide(c)}`, limite: 10, ventanaSegundos: 3_600 })
+  if (d.imagen) await comprobarImagenPropia(c.env, d.imagen, usuario.id)
 
   const documento: Evento = {
     titulo: d.titulo,
@@ -131,6 +134,7 @@ eventos.post('/', exigirSesion, async (c) => {
     terminaEn: d.terminaEn,
     creadoPor: usuario.id, // del token, JAMÁS del cuerpo de la petición
     cancionUrl: d.cancionUrl,
+    imagen: d.imagen,
     suscritos: 0,
     creadoEn: new Date(),
   }
@@ -165,13 +169,18 @@ eventos.patch('/:id', exigirSesion, async (c) => {
   }
   if (d.cancionUrl === null) borrados.cancionUrl = ''
   else if (d.cancionUrl !== undefined) cambios.cancionUrl = d.cancionUrl
+  if (d.imagen === null) borrados.imagen = ''
+  else if (d.imagen !== undefined) cambios.imagen = d.imagen
 
+  let imagenAnterior: string | undefined
   const { valor } = await conDb(c.env, async ({ col }) => {
     const actual = await col.eventos.findOne({ _id: id as never })
     if (!actual) throw noEncontrado('Ese evento no existe')
 
     // La comprobación que ningún hosting hace por ti.
     if (actual.creadoPor !== usuario.id) throw sinPermiso()
+    if (d.imagen && d.imagen !== actual.imagen) await comprobarImagenPropia(c.env, d.imagen, usuario.id)
+    imagenAnterior = actual.imagen
 
     // Coherencia de fechas cuando sólo se cambia una de las dos.
     const empieza = (cambios.empiezaEn as Date) ?? actual.empiezaEn
@@ -185,6 +194,11 @@ eventos.patch('/:id', exigirSesion, async (c) => {
   })
 
   if (!valor) throw noEncontrado('Ese evento no existe')
+
+  // La foto anterior se borra DESPUÉS de guardar: si la base fallara, el evento
+  // no se quedaría apuntando a una imagen que ya no existe.
+  if (d.imagen !== undefined && imagenAnterior && imagenAnterior !== d.imagen) await borrarImagenes(c.env, [imagenAnterior])
+
   return c.json({ evento: aPublico(valor as never, usuario.id) })
 })
 
@@ -195,14 +209,16 @@ eventos.delete('/:id', exigirSesion, async (c) => {
   const usuario = usuarioDe(c)
   const id = idValido(c.req.param('id'))
 
-  await conDb(c.env, async ({ col }) => {
+  const { valor: imagen } = await conDb(c.env, async ({ col }) => {
     const actual = await col.eventos.findOne({ _id: id as never })
     if (!actual) throw noEncontrado('Ese evento no existe')
     if (actual.creadoPor !== usuario.id) throw sinPermiso()
 
     await col.eventos.deleteOne({ _id: id as never })
     await col.suscripciones.deleteMany({ eventoId: id.toString() })
+    return actual.imagen
   })
+  await borrarImagenes(c.env, [imagen])
 
   return c.body(null, 204)
 })

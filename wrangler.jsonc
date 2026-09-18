@@ -26,5 +26,15 @@
   //
   // "kv_namespaces": [
   //   { "binding": "CACHE", "id": "pega_aqui_el_id" }
+  // ],
+
+  // Opcional. Imágenes de los eventos (R2: 10 GB gratis, sin coste de salida).
+  // Sin esto la API funciona igual y los eventos llevan su emoji.
+  // Para activarlo:
+  //   npx wrangler r2 bucket create fiestas-imagenes
+  // y descomenta:
+  //
+  // "r2_buckets": [
+  //   { "binding": "IMAGENES", "bucket_name": "fiestas-imagenes" }
   // ]
 }

@@ -9,6 +9,9 @@ import type { Env } from '../tipos'
  * Todo el coste de conexión está concentrado en esta función. Si algún día
  * medís que es demasiado, es el ÚNICO sitio que hay que cambiar: un Durable
  * Object que mantenga la conexión, o desplegar en un contenedor con pool.
+ *
+ * Lo segundo ya está: con Docker (node/servidor.ts) se usa el pool compartido
+ * de más abajo. El Worker sigue abriendo una conexión por invocación.
  */
 
 export type Evento = {
@@ -21,6 +24,7 @@ export type Evento = {
   terminaEn: Date
   creadoPor: string
   cancionUrl?: string
+  imagen?: string // id en R2 (ver lib/imagenes.ts)
   suscritos: number
   denuncias?: number
   oculto?: boolean
@@ -72,21 +76,34 @@ export type ConexionDb = {
   msConexion: number
 }
 
-export async function conectar(env: Env): Promise<ConexionDb> {
-  if (!env.MONGODB_URI) {
-    throw new Error('Falta MONGODB_URI. En local va en .dev.vars; desplegado, con wrangler secret put.')
+/**
+ * Pool compartido, SÓLO fuera de Workers (contenedor Node, ver node/servidor.ts,
+ * que pone MONGO_POOL="1"). En un proceso que vive, abrir conexión en cada
+ * petición es tirar 100-300 ms; aquí se abre una vez y se reutiliza.
+ * En el Worker MONGO_POOL no existe y esta variable nunca se usa.
+ */
+let clienteCompartido: Promise<MongoClient> | undefined
+
+function poolCompartido(uri: string) {
+  if (!clienteCompartido) {
+    const cliente = new MongoClient(uri, { serverSelectionTimeoutMS: 8_000, maxPoolSize: 20 })
+    clienteCompartido = cliente.connect().catch((err) => {
+      clienteCompartido = undefined // que la próxima petición vuelva a intentarlo
+      throw err
+    })
   }
+  return clienteCompartido
+}
 
-  const t0 = Date.now()
-  const cliente = new MongoClient(env.MONGODB_URI, {
-    serverSelectionTimeoutMS: 8_000,
-    maxPoolSize: 1, // el pool no sobrevive a la invocación: pedir más no sirve de nada
-  })
+/** Cierra el pool al apagar el contenedor. En Workers no hace nada. */
+export async function cerrarPool() {
+  const pendiente = clienteCompartido
+  clienteCompartido = undefined
+  if (pendiente) await (await pendiente.catch(() => undefined))?.close().catch(() => {})
+}
 
-  await cliente.connect()
-  const msConexion = Date.now() - t0
+function envolver(cliente: MongoClient, env: Env, msConexion: number, cerrar: () => Promise<void>): ConexionDb {
   const db = cliente.db(env.DB_NAME ?? 'fiestas')
-
   return {
     db,
     col: {
@@ -95,9 +112,31 @@ export async function conectar(env: Env): Promise<ConexionDb> {
       suscripciones: db.collection<Suscripcion>('suscripciones'),
       denuncias: db.collection<Denuncia>('denuncias'),
     },
-    cerrar: () => cliente.close().catch(() => {}),
+    cerrar,
     msConexion,
   }
+}
+
+export async function conectar(env: Env): Promise<ConexionDb> {
+  if (!env.MONGODB_URI) {
+    throw new Error('Falta MONGODB_URI. En local va en .dev.vars; desplegado, con wrangler secret put (o en .env con Docker).')
+  }
+
+  const t0 = Date.now()
+
+  if (env.MONGO_POOL === '1') {
+    const cliente = await poolCompartido(env.MONGODB_URI)
+    // cerrar no hace nada: la conexión vuelve al pool y la reutiliza la siguiente petición.
+    return envolver(cliente, env, Date.now() - t0, async () => {})
+  }
+
+  const cliente = new MongoClient(env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 8_000,
+    maxPoolSize: 1, // el pool no sobrevive a la invocación: pedir más no sirve de nada
+  })
+
+  await cliente.connect()
+  return envolver(cliente, env, Date.now() - t0, () => cliente.close().catch(() => {}))
 }
 
 /**

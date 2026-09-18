@@ -32,7 +32,7 @@ export async function crearSesion(c: Context<Contexto>, usuario: Usuario) {
     exp: Math.floor(Date.now() / 1000) + DURACION_SESION,
   }
 
-  const token = await sign(carga, exigirSecreto(c.env))
+  const token = await sign(carga, exigirSecreto(c.env), 'HS256')
 
   setCookie(c, COOKIE_SESION, token, {
     httpOnly: true,
@@ -82,7 +82,7 @@ async function leerUsuario(c: Context<Contexto>): Promise<Usuario | undefined> {
   if (!token) return undefined
 
   try {
-    const carga = (await verify(token, exigirSecreto(c.env))) as unknown as Carga
+    const carga = (await verify(token, exigirSecreto(c.env), 'HS256')) as unknown as Carga
     if (!carga?.sub) return undefined
     return { id: carga.sub, nombre: carga.nombre, email: carga.email, foto: carga.foto }
   } catch {

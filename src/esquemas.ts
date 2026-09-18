@@ -55,6 +55,9 @@ const urlCancion = z
 
 const fecha = z.coerce.date()
 
+/** Id de una imagen ya subida con POST /api/imagenes. Nunca una URL: así no se cuelan enlaces externos. */
+const idImagen = z.string().regex(/^[a-f0-9]{24}$/, 'Imagen no válida')
+
 export const CrearEvento = z
   .object({
     titulo: z.string().trim().min(3, 'Mínimo 3 caracteres').max(120),
@@ -65,6 +68,7 @@ export const CrearEvento = z
     empiezaEn: fecha,
     terminaEn: fecha,
     cancionUrl: urlCancion.optional(),
+    imagen: idImagen.optional(),
   })
   .refine((d) => d.terminaEn > d.empiezaEn, {
     message: 'La fiesta no puede terminar antes de empezar',
@@ -90,6 +94,7 @@ export const EditarEvento = z
     empiezaEn: fecha.optional(),
     terminaEn: fecha.optional(),
     cancionUrl: urlCancion.nullable().optional(), // null = quitar la canción
+    imagen: idImagen.nullable().optional(), // null = volver al emoji
   })
   .refine((d) => Object.keys(d).length > 0, { message: 'No has enviado ningún cambio' })
   .refine((d) => (d.lng === undefined) === (d.lat === undefined), {

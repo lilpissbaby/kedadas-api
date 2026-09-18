@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "API de fiestas locales geolocalizadas · Hono sobre Cloudflare Workers + MongoDB Atlas",
+  "description": "API de fiestas locales geolocalizadas · Hono sobre Cloudflare Workers o Docker + MongoDB",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "construir": "node node/construir.mjs",
+    "start": "node dist/node/servidor.js",
     "seed": "node scripts/seed.mjs",
     "indices": "node scripts/indices.mjs",
     "probar": "node scripts/probar.mjs",

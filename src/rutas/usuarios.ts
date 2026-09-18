@@ -5,6 +5,7 @@ import { esDev, exigirSesion, usuarioDe, crearSesion } from '../lib/auth'
 import { perfilPublico, perfilPropio, guardarAlEntrar } from '../lib/usuarios'
 import { ErrorApi, invalida, noEncontrado } from '../lib/errores'
 import { detallesDeZod } from '../esquemas'
+import { borrarImagenes } from '../lib/imagenes'
 import type { Contexto, Usuario } from '../tipos'
 
 export const usuarios = new Hono<Contexto>()
@@ -128,6 +129,8 @@ usuarios.delete('/dev/:nombre', async (c) => {
   const id = `dev:${c.req.param('nombre')}`
 
   const { valor } = await conDb(c.env, async ({ col }) => {
+    const conFoto = await col.eventos.find({ creadoPor: id, imagen: { $exists: true } } as never).toArray()
+    await borrarImagenes(c.env, conFoto.map((e) => e.imagen))
     const eventos = await col.eventos.deleteMany({ creadoPor: id })
     const subs = await col.suscripciones.deleteMany({ usuarioId: id })
     const denuncias = await col.denuncias.deleteMany({ usuarioId: id })

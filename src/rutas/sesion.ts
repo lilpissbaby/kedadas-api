@@ -3,6 +3,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { crearSesion, cerrarSesion, esDev, usuarioDe, exigirSesion } from '../lib/auth'
 import { conDb } from '../lib/db'
 import { guardarAlEntrar } from '../lib/usuarios'
+import { borrarImagenes } from '../lib/imagenes'
 import { ErrorApi, invalida } from '../lib/errores'
 import type { Contexto, Env, Usuario } from '../tipos'
 
@@ -213,12 +214,16 @@ sesion.post('/dev', async (c) => {
 sesion.delete('/yo', exigirSesion, async (c) => {
   const usuario = usuarioDe(c)
 
-  await conDb(c.env, async ({ col }) => {
+  const { valor: imagenes } = await conDb(c.env, async ({ col }) => {
+    const conFoto = await col.eventos.find({ creadoPor: usuario.id, imagen: { $exists: true } } as never).toArray()
     await col.suscripciones.deleteMany({ usuarioId: usuario.id })
     await col.eventos.deleteMany({ creadoPor: usuario.id })
     await col.denuncias.deleteMany({ usuarioId: usuario.id })
     await col.usuarios.deleteOne({ usuarioId: usuario.id })
+    return conFoto.map((e) => e.imagen)
   })
+  // Borrar la cuenta borra también sus fotos: el RGPD no se queda en Mongo.
+  await borrarImagenes(c.env, imagenes)
 
   cerrarSesion(c)
   return c.json({ borrado: true })

@@ -1,0 +1,80 @@
+# api-fiestas · API en el homelab
+#
+#   cp .env.example .env          # rellena MONGODB_URI, JWT_SECRET y el dominio
+#   docker compose up -d --build
+#   docker compose run --rm api-fiestas node scripts/indices.mjs   # UNA vez por base
+#
+# Mismo patrón que kedada: sin puertos publicados y en la red proxy_network.
+# Nadie de fuera llega a este contenedor; sólo el nginx de kedada, que le
+# reenvía /api/ a http://api-fiestas:8787.
+
+services:
+  api-fiestas:
+    build: .
+    image: api-fiestas:local
+    container_name: api-fiestas
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PUERTO: "8787"
+      IMAGENES_DIR: /datos/imagenes
+    volumes:
+      # Las fotos de los eventos. Esto es lo que hay que copiar en las copias de seguridad.
+      - api_fiestas_imagenes:/datos/imagenes
+    networks:
+      - proxy_network
+      - fiestas_interna
+    # El proceso sólo escribe en el volumen de imágenes: el resto, de sólo lectura.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 200
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/salud').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # ------------------------------------------------------------------
+  # Opcional: Mongo en el propio VPS en lugar de Atlas.
+  #   docker compose --profile mongo-local up -d --build
+  # y en .env:  MONGODB_URI=mongodb://mongo:27017
+  # Sólo está en la red interna (sin salida al proxy ni puertos): nadie
+  # más que la API lo ve. Las copias de seguridad, por vuestra cuenta.
+  # ------------------------------------------------------------------
+  mongo:
+    image: mongo:7
+    container_name: api-fiestas-mongo
+    profiles: [mongo-local]
+    restart: unless-stopped
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
+    volumes:
+      - api_fiestas_mongo:/data/db
+    networks:
+      - fiestas_interna
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  api_fiestas_imagenes:
+  api_fiestas_mongo:
+
+networks:
+  proxy_network:
+    external: true
+  fiestas_interna:
+    internal: true

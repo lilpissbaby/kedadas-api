@@ -65,7 +65,7 @@ try {
 
   // Las fiestas falsas dicen quién las creó, así que esas personas tienen que
   // existir: si no, la ficha del evento saldría sin organizador.
-  const colUsuarios = cliente.db(DB).collection('usuarios')
+  const colUsuarios = client.db(DB).collection('usuarios')
   const creadores = [...new Set(docs.map((d) => d.creadoPor))]
   await colUsuarios.bulkWrite(
     creadores.map((usuarioId) => ({

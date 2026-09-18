@@ -1,7 +1,7 @@
 # API de fiestas
 
-Hono sobre Cloudflare Workers, MongoDB Atlas, sesión propia con Google.
-Sin servidor que administrar y sin framework en el frontend.
+Hono sobre Cloudflare Workers **o en Docker**, MongoDB Atlas, sesión propia con Google.
+El mismo código corre en los dos sitios (ver *Desplegar con Docker*).
 
 ## Arrancar
 
@@ -41,6 +41,8 @@ pueda editar ni borrar el evento de otro. Si sale algo en rojo, no sigas.
 | POST | `/api/eventos/:id/denuncia` | con sesión |
 | GET | `/api/yo/suscripciones` | con sesión |
 | GET | `/api/yo/eventos` | con sesión |
+| POST | `/api/imagenes` | con sesión — subir foto (ver *Imágenes*) |
+| GET | `/api/imagenes/:id` | público — `:id` o `:id-mini` |
 | GET | `/api/usuarios/yo` | con sesión — mi ficha con contadores |
 | GET | `/api/usuarios/:id` | público — perfil del organizador, sin email |
 | GET | `/api/sesion/google` | empieza el login |
@@ -159,6 +161,63 @@ Antes de desplegar, dos cosas obligatorias en `wrangler.jsonc`:
 En un servidor sin escritorio, `wrangler login` no funciona porque abre un
 navegador: usa `export CLOUDFLARE_API_TOKEN="..."`.
 
+## Desplegar con Docker (homelab)
+
+La alternativa al Worker: la misma API en un contenedor Node, junto a kedada
+en el VPS. No se toca nada de `src/`; `node/servidor.ts` le da a Hono lo que
+en Cloudflare le da el Worker:
+
+| En Cloudflare | En Docker |
+|---|---|
+| `wrangler secret` / `.dev.vars` | `.env` |
+| KV `CACHE` | en memoria (se vacía al reiniciar; vale para 1 réplica) |
+| R2 `IMAGENES` | disco, volumen `api_fiestas_imagenes` |
+| una conexión a Mongo por petición | pool compartido (`MONGO_POOL`), sin coste de conexión |
+
+```bash
+cp .env.example .env                 # MONGODB_URI, JWT_SECRET, ORIGEN_WEB, Google
+docker compose up -d --build
+docker compose run --rm api-fiestas node scripts/indices.mjs    # UNA vez por base
+docker compose logs -f api-fiestas
+```
+
+Y en kedada, en su `.env`:
+
+```bash
+API_UPSTREAM=api-fiestas:8787
+API_ESQUEMA=http
+```
+
+Cómo queda:
+
+- **Sin puertos publicados.** Está en `proxy_network`, como el resto del
+  homelab, y sólo le habla el nginx de kedada. No hace falta `.conf` en el
+  reverse proxy: el subdominio sigue siendo el de kedada.
+- **Contenedor endurecido:** usuario `node`, sistema de ficheros de sólo
+  lectura (salvo el volumen de imágenes y `/tmp`), sin capabilities,
+  `no-new-privileges`, 256 MB de tope y healthcheck contra `/api/salud`.
+- **IP de los límites:** la API reescribe `CF-Connecting-IP` con la IP que
+  pone nginx, para que nadie se salte el límite mandándola a mano.
+- **Atlas con IP fija.** A diferencia del Worker, aquí sabéis desde qué IP se
+  conecta: en *Network Access* quitad `0.0.0.0/0` y dejad sólo la del VPS.
+- **Copias de seguridad:** el volumen `api_fiestas_imagenes` (las fotos). La
+  base, si es Atlas, ya la tiene Atlas.
+- `GOOGLE_REDIRECT_URI` es obligatoria (la API ve el host interno, no el
+  dominio público). Registra la misma URL en Google Cloud Console.
+
+**Mongo en el propio VPS** (opcional, en lugar de Atlas):
+
+```bash
+docker compose --profile mongo-local up -d --build
+# .env:  MONGODB_URI=mongodb://mongo:27017
+```
+
+Va en una red interna sin salida ni puertos: sólo lo ve la API. Las copias de
+la base pasan a ser cosa vuestra.
+
+Sin Docker, para probar el mismo servidor en local: `npm run construir` y
+`npm start` (con las variables en el entorno, no en `.dev.vars`).
+
 ## Opcional: límites y caché
 
 Sin configurar nada, la API funciona pero **sin límite de peticiones y sin
@@ -171,6 +230,48 @@ npx wrangler kv namespace create CACHE
 Pega el id en `wrangler.jsonc` (está el bloque comentado). A partir de ahí:
 crear evento queda limitado a 10/hora por usuario, y la consulta del mapa se
 cachea 45 s para visitantes anónimos.
+
+## Opcional: imágenes de los eventos
+
+Sin configurar nada, los eventos llevan el emoji de su tipo y `POST
+/api/imagenes` responde 501. Para activar las fotos:
+
+```bash
+npx wrangler r2 bucket create fiestas-imagenes
+```
+
+y descomenta el bloque `r2_buckets` de `wrangler.jsonc`. En local, `wrangler
+dev` simula el bucket solo en cuanto el bloque está descomentado. R2 da 10 GB
+gratis y no cobra por la descarga.
+
+Cómo funciona:
+
+1. El cliente sube `multipart/form-data` con dos campos, `grande` (lado mayor
+   1080 px, hasta 1,5 MB) y `mini` (160×160, hasta 100 KB). El redimensionado
+   lo hace el navegador: en Workers no hay librería de imagen gratis, y así el
+   mapa descarga miniaturas de ~6 KB y no fotos enteras.
+2. La API responde `{ id, imagen: { grande, mini } }`.
+3. Ese `id` se manda como `imagen` al crear o editar el evento (`null` en un
+   PATCH vuelve al emoji). Los eventos devuelven `imagen: { grande, mini }` o `null`.
+
+Lo que se comprueba, porque el cliente puede mentir:
+
+- **Los bytes**, no el Content-Type: sólo WebP o JPEG de verdad.
+- **Que no haya EXIF ni XMP.** Una foto de móvil trae el GPS de donde se hizo,
+  y en una app de fiestas eso suele ser la casa de alguien. El frontend los
+  quita al recodificar; si alguien sube directo a la API con metadatos, 400.
+- **Que la imagen sea tuya** al enlazarla a un evento (el uploader va en los
+  metadatos del objeto en R2). Si no, podrías usar la foto de otro y borrársela.
+- **Limpieza:** cambiar o quitar la foto, borrar el evento o borrar la cuenta
+  borra también los objetos de R2.
+
+Las imágenes se sirven con `Cache-Control: immutable` (cambiar la foto crea
+otro id), y el nginx del frontend las cachea: cada imagen llega al Worker una
+sola vez aunque la vean mil personas.
+
+Queda por hacer: una subida que nunca llega a enlazarse a un evento (alguien
+elige foto y cierra) se queda huérfana. Cuesta céntimos; cuando moleste, una
+regla de ciclo de vida en R2 o un cron que borre lo no enlazado.
 
 ## Decisiones que vas a encontrar en el código
 
@@ -215,16 +316,24 @@ src/
     auth.ts             sesión JWT en cookie + middlewares
     errores.ts          un solo formato de error para toda la API
     limites.ts          límite de peticiones y caché (opcionales, vía KV)
+    imagenes.ts         validación de bytes, EXIF, propiedad y borrado en R2
   rutas/
     usuarios.ts         perfiles, y creación de usuarios de prueba
     eventos.ts          CRUD + denuncias
     suscripciones.ts    apuntarse, desapuntarse, mis fiestas
     sesion.ts           Google OAuth con PKCE, y login de desarrollo
+    imagenes.ts         subir y servir imágenes (opcional, vía R2)
 scripts/
   indices.mjs           crea los índices (ejecutar una vez por base)
   seed.mjs              500 fiestas falsas para tener algo en el mapa
   probar.mjs            recorre la API y comprueba permisos
   bench-node.mjs        latencia a Atlas con y sin pool
+node/
+  servidor.ts           la API como proceso Node (Docker)
+  kv-memoria.ts         sustituto del KV CACHE
+  r2-disco.ts           sustituto del bucket R2 IMAGENES, en disco
+  construir.mjs         compila src/ y node/ a dist/
+Dockerfile · docker-compose.yml · .env.example
 postman/
   fiestas.postman_collection.json     la API documentada y ejecutable
   fiestas.*.postman_environment.json  local y producción

@@ -7,6 +7,7 @@ import { eventos } from './rutas/eventos'
 import { suscripciones, mias } from './rutas/suscripciones'
 import { sesion } from './rutas/sesion'
 import { usuarios } from './rutas/usuarios'
+import { imagenes } from './rutas/imagenes'
 import type { Contexto } from './tipos'
 
 const app = new Hono<Contexto>()
@@ -52,6 +53,7 @@ app.route('/api/usuarios', usuarios)
 app.route('/api/eventos', eventos)
 app.route('/api/eventos', suscripciones) // /:id/suscripcion
 app.route('/api/yo', mias)
+app.route('/api/imagenes', imagenes)
 
 /* ---------------- salud ---------------- */
 
@@ -61,6 +63,7 @@ app.get('/api/salud', (c) =>
     modoDev: esDev(c.env),
     loginGoogle: Boolean(c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET),
     cache: Boolean(c.env.CACHE),
+    imagenes: Boolean(c.env.IMAGENES),
     hora: new Date().toISOString(),
   }),
 )
@@ -79,6 +82,8 @@ app.get('/api', (c) =>
       'POST   /api/eventos/:id/denuncia': 'denunciar (sesión)',
       'GET    /api/yo/suscripciones': 'mis fiestas (sesión)',
       'GET    /api/yo/eventos': 'los que he creado (sesión)',
+      'POST   /api/imagenes': 'subir imagen: multipart con "grande" y "mini" (sesión)',
+      'GET    /api/imagenes/:id': 'servir imagen (público; :id o :id-mini)',
       'GET    /api/usuarios/yo': 'mi ficha con contadores (sesión)',
       'GET    /api/usuarios/:id': 'perfil público de un organizador',
       'GET    /api/sesion/google': 'empezar login con Google',
